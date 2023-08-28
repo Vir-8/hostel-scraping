@@ -1,0 +1,41 @@
+{
+  "zostel_url": "https://api.zostel.com/api/v1/stay/operators/?operating_model=F&fields=name,slug,destination",
+  "zostel_room_url": "https://api.zostel.com/api/v1/stay/operators/",
+  "availability_info_url": "https://api.zostel.com/api/v1/stay/availability/",
+  "duration_days": 10,
+  "max_retries": 3,
+  "retry_delay_seconds": 3,
+  "headers": [
+    {
+        "base_header": {
+            "sec-ch-ua": "\"Chromium\";v=\"116\", \"Not)A;Brand\";v=\"24\", \"Brave\";v=\"116\"",
+            "sec-ch-ua-mobile": "?0",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.zostel.com/",
+            "Client-App-Id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
+            "Client-User-Id": "d4fe781f74",
+            "sec-ch-ua-platform": "\"Linux\""
+        },
+
+        "data_header": {
+            "authority": "api.zostel.com",
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "en-GB,en;q=0.5",
+            "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6IkFOLTY2NzgxOTQiLCJhcHBfaWQiOiJGcmNJSDJtMDNReFZnRkQwMzd1OG9hUWN6YUFJbXZBTjUwNmNVUWI0IiwidXNlcl9pZCI6IjQ1NjkyNDFmMWEiLCJhdXRoZW50aWNhdGVkIjpmYWxzZSwiaWF0IjoxNjkzMDQ2OTI2fQ.J0F7cmM6ECps0Q_b3laALr_8wXFrcz64CEpoEjm7rKQ",
+            "client-app-id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
+            "client-user-id": "4569241f1a",
+            "origin": "https://www.zostel.com",
+            "referer": "https://www.zostel.com/",
+            "sec-ch-ua": "\"Chromium\";v=\"116\", \"Not)A;Brand\";v=\"24\", \"Brave\";v=\"116\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Linux\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "sec-gpc": "1",
+            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+        }
+    }
+  ]
+}
