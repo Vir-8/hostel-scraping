@@ -5,6 +5,7 @@
   "duration_days": 10,
   "max_retries": 3,
   "retry_delay_seconds": 3,
+  "max_num_of_threads": 4,
   "headers": [
     {
         "base_header": {

@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import json
 from retry import retry
+from concurrent.futures import ThreadPoolExecutor
 
 # Load configuration from config.json
 with open("config.json") as config_file:
@@ -48,43 +49,43 @@ def get_availability_data(code, first_date, last_date):
     return response.json()
 
 
-def create_data_list(operators, first_date, last_date):
+def create_data_list_for_operator(operator, first_date, last_date):
+    # Get the specific keyword for getting zostel room data
+    slug = operator["slug"]
+    place = operator["destination"]["name"]
+
+    # Get the destination code for accessing availability data
+    code = slug.rsplit("-", 1)[-1].upper()
+
+    rooms = get_room_data(slug)
+    room_details = get_availability_data(code, first_date, last_date)
+
+    general_info = room_details["availability"]  # Extract availability data
+    pricing_info = room_details["pricing"]  # Extract prices
+
     data_list = []
-    for operator in operators:
-        # Get the specific keyword for getting zostel room data
-        slug = operator["slug"]
-        place = operator["destination"]["name"]
 
-        # Get the destination code for accessing availability data
-        code = slug.rsplit("-", 1)[-1].upper()
+    for index in range(len(rooms)):
+        # Get the zostel room name
+        room_name = rooms[index]["name"]
 
-        rooms = get_room_data(slug)
-        room_details = get_availability_data(code, first_date, last_date)
+        # Set loop start and end such that the appropriate room data is extracted
+        start_index = index * config["duration_days"]
+        end_index = start_index + config["duration_days"]
 
-        general_info = room_details["availability"]  # Extract availability data
-        pricing_info = room_details["pricing"]  # Extract prices
-
-        for index in range(len(rooms)):
-            # Get the zostel room name
-            room_name = rooms[index]["name"]
-
-            # Set loop start and end such that the appropriate room data is extracted
-            start_index = index * config["duration_days"]
-            end_index = start_index + config["duration_days"]
-
-            for i in range(start_index, end_index):
-                date = general_info[i]["date"]
-                unit_value = general_info[i]["units"]
-                price = pricing_info[i]["price"]
-                data_list.append(
-                    {
-                        "Place": place,
-                        "Date": date,
-                        "Room Type": room_name,
-                        "Units": unit_value,
-                        "Price": price,
-                    }
-                )
+        for i in range(start_index, end_index):
+            date = general_info[i]["date"]
+            unit_value = general_info[i]["units"]
+            price = pricing_info[i]["price"]
+            data_list.append(
+                {
+                    "Place": place,
+                    "Date": date,
+                    "Room Type": room_name,
+                    "Units": unit_value,
+                    "Price": price,
+                }
+            )
     return data_list
 
 
@@ -99,7 +100,19 @@ def main():
 
     # Get the destination details and relevant API data
     operators = get_operators_data()
-    data_list = create_data_list(operators, first_date, last_date)
+    data_list = []
+
+    # Get data concurrently
+    with ThreadPoolExecutor(max_workers=config["max_num_of_threads"]) as executor:
+        futures = []
+        for operator in operators:
+            future = executor.submit(
+                create_data_list_for_operator, operator, first_date, last_date
+            )
+            futures.append(future)
+
+        for future in futures:
+            data_list.extend(future.result())
 
     df = pd.DataFrame(data_list)
     df.to_csv("output.csv", index=False)
