@@ -1,5 +1,12 @@
 import requests
 import pandas as pd
+from datetime import datetime, timedelta
+
+today = datetime.today().date()
+later = today + timedelta(days=10)
+
+first_date = today.strftime("%Y-%m-%d")
+last_date = later.strftime("%Y-%m-%d")
 
 url = "https://api.zostel.com/api/v1/stay/operators/?operating_model=F&fields=name,slug,destination"
 
@@ -30,7 +37,7 @@ for operator in operators:
     response = requests.request("GET", nameURL, headers=headers)
     rooms = response.json()["operator"]["rooms"]
 
-    detailURL = f"https://api.zostel.com/api/v1/stay/availability/?checkin=2023-08-28&checkout=2023-09-07&property_code={code}"
+    detailURL = f"https://api.zostel.com/api/v1/stay/availability/?checkin={first_date}&checkout={last_date}&property_code={code}"
 
     detailHeader = {
         "authority": "api.zostel.com",
@@ -74,7 +81,5 @@ for operator in operators:
                 }
             )
 
-
 df = pd.DataFrame(data_list)
-
 df.to_csv("output.csv", index=False)
