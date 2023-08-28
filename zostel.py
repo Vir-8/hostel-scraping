@@ -1,139 +1,80 @@
-import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from bs4 import BeautifulSoup
+import requests
+import pandas as pd
 
-chrome_driver_path = '/usr/local/bin/chromedriver-linux64/chromedriver'
+url = "https://api.zostel.com/api/v1/stay/operators/?operating_model=F&fields=name,slug,destination"
 
-url = 'https://www.zostel.com/zostel/'
+headers = {
+    "sec-ch-ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Brave";v="116"',
+    "sec-ch-ua-mobile": "?0",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.zostel.com/",
+    "Client-App-Id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
+    "Client-User-Id": "d4fe781f74",
+    "sec-ch-ua-platform": '"Linux"',
+}
 
-data = {}
+codeResponse = requests.request("GET", url, headers=headers)
 
-chrome_options = webdriver.ChromeOptions()
-chrome_options.add_argument('--headless')  # Run Chrome in headless mode (no GUI)
-chrome_options.add_argument('--disable-gpu')  # Disable GPU acceleration in headless mode
-chrome_options.add_argument('--remote-debugging-port=9222')
+data = codeResponse.json()
+operators = data["operators"]
 
-service = ChromeService(chrome_driver_path)
-driver = webdriver.Chrome(service=service, options=chrome_options)
+data_list = []
 
-driver.get(url)
-driver.implicitly_wait(5)
-time.sleep(3)
+for operator in operators:
+    slug = operator["slug"]
+    place = operator["destination"]["name"]
+    code = slug.rsplit("-", 1)[-1].upper()
 
-destinationData = driver.find_elements(By.CSS_SELECTOR, ".text-xl.font-bold.block.text-white.truncate")
-destinations = ["banikhet"]
+    nameURL = f"https://api.zostel.com/api/v1/stay/operators/{slug}/"
+    response = requests.request("GET", nameURL, headers=headers)
+    rooms = response.json()["operator"]["rooms"]
 
-# Loop through the extracted destination texts and navigate to the URLs
-for destination in destinations:
-    driver.get(f"{url}{destination}")
-    driver.implicitly_wait(5)
-    time.sleep(3)
+    detailURL = f"https://api.zostel.com/api/v1/stay/availability/?checkin=2023-08-28&checkout=2023-09-07&property_code={code}"
 
-    stays = driver.find_element(By.CSS_SELECTOR, 'div.flex.items-center.flex-col.sm\\:flex-wrap.h-content')
-    view_buttons = stays.find_elements(By.CSS_SELECTOR, 'button.text-base')
+    detailHeader = {
+        "authority": "api.zostel.com",
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "en-GB,en;q=0.5",
+        "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6IkFOLTY2NzgxOTQiLCJhcHBfaWQiOiJGcmNJSDJtMDNReFZnRkQwMzd1OG9hUWN6YUFJbXZBTjUwNmNVUWI0IiwidXNlcl9pZCI6IjQ1NjkyNDFmMWEiLCJhdXRoZW50aWNhdGVkIjpmYWxzZSwiaWF0IjoxNjkzMDQ2OTI2fQ.J0F7cmM6ECps0Q_b3laALr_8wXFrcz64CEpoEjm7rKQ",
+        "client-app-id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
+        "client-user-id": "4569241f1a",
+        "origin": "https://www.zostel.com",
+        "referer": "https://www.zostel.com/",
+        "sec-ch-ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Brave";v="116"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "sec-gpc": "1",
+        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    }
 
-    for index in range(len(view_buttons)):
-        try:
-            
-            stays = driver.find_element(By.CSS_SELECTOR, 'div.flex.items-center.flex-col.sm\\:flex-wrap.h-content')
-            view_buttons = stays.find_elements(By.CSS_SELECTOR, 'button.text-base')
+    details = requests.request("GET", detailURL, headers=detailHeader)
+    detailResponse = details.json()
 
-            button = view_buttons[index]
-            time.sleep(2)
+    general_info = detailResponse["availability"]
+    pricing_info = detailResponse["pricing"]
 
-            # Scroll to the button using JavaScript
-            driver.execute_script("arguments[0].scrollIntoView();", button)
+    for room in rooms:
+        room_name = room["name"]
 
-            wait = WebDriverWait(driver, 5)
-            button = wait.until(EC.element_to_be_clickable(button))
-            time.sleep(2)
-            button.click()
-
-            wait = WebDriverWait(driver, 5)
-            wait.until(EC.url_changes(url))
-            driver.implicitly_wait(5)
-
-            current_url = driver.current_url
-            print(f"Current URL {index + 1}: {current_url}")
-
-            last_height = driver.execute_script("return document.body.scrollHeight")
-            while True:
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)  # Adjust the waiting time as needed
-                new_height = driver.execute_script("return document.body.scrollHeight")
-                if new_height == last_height:
-                    break
-                last_height = new_height
-
-            time.sleep(2)
-            page_source = driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
-
-            sections = soup.find_all("section", class_ = ["mt-4 overflow-hidden w-full shadow-xs hover:shadow-md rounded-t-lg", "mt-4 overflow-hidden w-full shadow-xs hover:shadow-md rounded-lg"])
-            details = soup.find_all("div", class_ = "flex w-full bg-white rounded-b-lg border-t relative px-4")
-
-            availButtons = driver.find_elements(By.CSS_SELECTOR, ".text-xs.flex.items-center.font-semibold.text-orange.cursor-pointer")
-
-            print (len(sections), len(details), len(availButtons))
-
-            if len(sections) != len(details):
-                for i in range(len(sections)):
-                    nextElement = sections[i].find_next_sibling()
-                    print(nextElement.name)
-                    if nextElement.name != 'div':
-                        driver.execute_script("arguments[0].scrollIntoView();", availButtons[i])
-                        driver.implicitly_wait(2)
-                        driver.execute_script("arguments[0].click();", availButtons[i])
-                        time.sleep(2)
-                
-                page_source = driver.page_source
-                soup = BeautifulSoup(page_source, 'html.parser')
-
-                sections = soup.find_all("section", class_ = "mt-4 overflow-hidden w-full shadow-xs hover:shadow-md rounded-t-lg")
-                details = soup.find_all("div", class_ = "flex w-full bg-white rounded-b-lg border-t relative px-4")
-
-            table_data = []
-
-            for j in range(len(details)):
-
-                name = sections[j].find("span", class_="sm:text-xl font-semibold leading-snug block")
-                data_divs = details[j].find_all(class_=["flex flex-col items-center px-2 py-4 flex-1", "flex flex-col items-center px-2 py-4 flex-1 hover:bg-gray-200 cursor-pointer"])
-
-                print(name.text)
-
-                for div in data_divs:
-                    day_elem = div.find("span", class_="uppercase tracking-wide text-xs text-gray-600")
-                    date_elem = div.find("span", class_="font-semibold text-sm text-gray-600")
-                    price_elem = div.find("span", class_="mt-2 text-green-500 font-semibold")
-                    units_elem = div.find("span", class_="text-sm font-medium text-gray-800")
-
-                    if not price_elem:
-                        price_elem = div.find("span", class_="text-sm font-medium text-gray-700 mt-1")
-
-                    if not units_elem:
-                        units_elem = div.find("span", class_="text-sm font-medium text-gray-700 mt-1")
-
-                    day = day_elem.text if day_elem else "N/A"
-                    date = date_elem.text if date_elem else "N/A"
-                    price = price_elem.text if price_elem else "N/A"
-                    units = units_elem.text if units_elem else "N/A"
-
-                    table_data.append([day, date, price, units])
+        for i in range(len(general_info)):
+            date = general_info[i]["date"]
+            unit_value = general_info[i]["units"]
+            price = pricing_info[i]["price"]
+            data_list.append(
+                {
+                    "Place": place,
+                    "Date": date,
+                    "Room Type": room_name,
+                    "Units": unit_value,
+                    "Price": price,
+                }
+            )
 
 
+df = pd.DataFrame(data_list)
 
-            for row in table_data:
-                print("\t".join(row))
-
-            time.sleep(3)
-            driver.execute_script("window.history.go(-1);")
-
-        except Exception as e:
-            print("An error occurred:", e)
-            continue
-
-driver.quit()
+df.to_csv("output.csv", index=False)
