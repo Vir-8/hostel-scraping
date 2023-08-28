@@ -1,85 +1,108 @@
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+import json
+from retry import retry
 
-today = datetime.today().date()
-later = today + timedelta(days=10)
+# Load configuration from config.json
+with open("config.json") as config_file:
+    config = json.load(config_file)
 
-first_date = today.strftime("%Y-%m-%d")
-last_date = later.strftime("%Y-%m-%d")
+MAX_RETRIES = config["max_retries"]
+RETRY_DELAY_SECONDS = config["retry_delay_seconds"]
+BASE_HEADER = config["headers"][0]["base_header"]
+DETAIL_HEADER = config["headers"][0]["data_header"]
 
-url = "https://api.zostel.com/api/v1/stay/operators/?operating_model=F&fields=name,slug,destination"
 
-headers = {
-    "sec-ch-ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Brave";v="116"',
-    "sec-ch-ua-mobile": "?0",
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://www.zostel.com/",
-    "Client-App-Id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
-    "Client-User-Id": "d4fe781f74",
-    "sec-ch-ua-platform": '"Linux"',
-}
+@retry(
+    requests.exceptions.RequestException, tries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS
+)
+def get_operators_data():
+    # Request data for location and further relevant API calls
+    response = requests.request("GET", config["zostel_url"], headers=BASE_HEADER)
+    return response.json()["operators"]
 
-codeResponse = requests.request("GET", url, headers=headers)
 
-data = codeResponse.json()
-operators = data["operators"]
-
-data_list = []
-
-for operator in operators:
-    slug = operator["slug"]
-    place = operator["destination"]["name"]
-    code = slug.rsplit("-", 1)[-1].upper()
-
-    nameURL = f"https://api.zostel.com/api/v1/stay/operators/{slug}/"
-    response = requests.request("GET", nameURL, headers=headers)
+@retry(
+    requests.exceptions.RequestException, tries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS
+)
+def get_room_data(slug):
+    # Request room data such as the room names
+    response = requests.request(
+        "GET", f"{config['zostel_room_url']}{slug}/", headers=BASE_HEADER
+    )
     rooms = response.json()["operator"]["rooms"]
+    return rooms
 
-    detailURL = f"https://api.zostel.com/api/v1/stay/availability/?checkin={first_date}&checkout={last_date}&property_code={code}"
 
-    detailHeader = {
-        "authority": "api.zostel.com",
-        "accept": "application/json, text/plain, */*",
-        "accept-language": "en-GB,en;q=0.5",
-        "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6IkFOLTY2NzgxOTQiLCJhcHBfaWQiOiJGcmNJSDJtMDNReFZnRkQwMzd1OG9hUWN6YUFJbXZBTjUwNmNVUWI0IiwidXNlcl9pZCI6IjQ1NjkyNDFmMWEiLCJhdXRoZW50aWNhdGVkIjpmYWxzZSwiaWF0IjoxNjkzMDQ2OTI2fQ.J0F7cmM6ECps0Q_b3laALr_8wXFrcz64CEpoEjm7rKQ",
-        "client-app-id": "FrcIH2m03QxVgFD037u8oaQczaAImvAN506cUQb4",
-        "client-user-id": "4569241f1a",
-        "origin": "https://www.zostel.com",
-        "referer": "https://www.zostel.com/",
-        "sec-ch-ua": '"Chromium";v="116", "Not)A;Brand";v="24", "Brave";v="116"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Linux"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-site",
-        "sec-gpc": "1",
-        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-    }
+@retry(
+    requests.exceptions.RequestException, tries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS
+)
+def get_availability_data(code, first_date, last_date):
+    # Request availability data such as units and pricing
+    response = requests.request(
+        "GET",
+        f"{config['availability_info_url']}?checkin={first_date}&checkout={last_date}&property_code={code}",
+        headers=DETAIL_HEADER,
+    )
+    return response.json()
 
-    details = requests.request("GET", detailURL, headers=detailHeader)
-    detailResponse = details.json()
 
-    general_info = detailResponse["availability"]
-    pricing_info = detailResponse["pricing"]
+def create_data_list(operators, first_date, last_date):
+    data_list = []
+    for operator in operators:
+        # Get the specific keyword for getting zostel room data
+        slug = operator["slug"]
+        place = operator["destination"]["name"]
 
-    for room in rooms:
-        room_name = room["name"]
+        # Get the destination code for accessing availability data
+        code = slug.rsplit("-", 1)[-1].upper()
 
-        for i in range(len(general_info)):
-            date = general_info[i]["date"]
-            unit_value = general_info[i]["units"]
-            price = pricing_info[i]["price"]
-            data_list.append(
-                {
-                    "Place": place,
-                    "Date": date,
-                    "Room Type": room_name,
-                    "Units": unit_value,
-                    "Price": price,
-                }
-            )
+        rooms = get_room_data(slug)
+        room_details = get_availability_data(code, first_date, last_date)
 
-df = pd.DataFrame(data_list)
-df.to_csv("output.csv", index=False)
+        general_info = room_details["availability"]  # Extract availability data
+        pricing_info = room_details["pricing"]  # Extract prices
+
+        for index in range(len(rooms)):
+            # Get the zostel room name
+            room_name = rooms[index]["name"]
+
+            # Set loop start and end such that the appropriate room data is extracted
+            start_index = index * config["duration_days"]
+            end_index = start_index + config["duration_days"]
+
+            for i in range(start_index, end_index):
+                date = general_info[i]["date"]
+                unit_value = general_info[i]["units"]
+                price = pricing_info[i]["price"]
+                data_list.append(
+                    {
+                        "Place": place,
+                        "Date": date,
+                        "Room Type": room_name,
+                        "Units": unit_value,
+                        "Price": price,
+                    }
+                )
+    return data_list
+
+
+def main():
+    # Get the check-in and check-out dates for relevant API calls
+    # duration_days is the number of days to fetch data for
+    today = datetime.today().date()
+    later = today + timedelta(days=config["duration_days"])
+
+    first_date = today.strftime("%Y-%m-%d")
+    last_date = later.strftime("%Y-%m-%d")
+
+    # Get the destination details and relevant API data
+    operators = get_operators_data()
+    data_list = create_data_list(operators, first_date, last_date)
+
+    df = pd.DataFrame(data_list)
+    df.to_csv("output.csv", index=False)
+
+
+main()
