@@ -20,8 +20,12 @@ DETAIL_HEADER = config["headers"][0]["data_header"]
 )
 def get_operators_data():
     # Request data for location and further relevant API calls
-    response = requests.request("GET", config["zostel_url"], headers=BASE_HEADER)
-    return response.json()["operators"]
+    try:
+        response = requests.request("GET", config["zostel_url"], headers=BASE_HEADER)
+        return response.json()["operators"]
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving data: {e}. Skipping...")
+        return ""
 
 
 @retry(
@@ -29,11 +33,15 @@ def get_operators_data():
 )
 def get_room_data(slug):
     # Request room data such as the room names
-    response = requests.request(
-        "GET", f"{config['zostel_room_url']}{slug}/", headers=BASE_HEADER
-    )
-    rooms = response.json()["operator"]["rooms"]
-    return rooms
+    try:
+        response = requests.request(
+            "GET", f"{config['zostel_room_url']}{slug}/", headers=BASE_HEADER
+        )
+        rooms = response.json()["operator"]["rooms"]
+        return rooms
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving data: {e}. Skipping...")
+        return ""
 
 
 @retry(
@@ -41,12 +49,16 @@ def get_room_data(slug):
 )
 def get_availability_data(code, first_date, last_date):
     # Request availability data such as units and pricing
-    response = requests.request(
-        "GET",
-        f"{config['availability_info_url']}?checkin={first_date}&checkout={last_date}&property_code={code}",
-        headers=DETAIL_HEADER,
-    )
-    return response.json()
+    try:
+        response = requests.request(
+            "GET",
+            f"{config['availability_info_url']}?checkin={first_date}&checkout={last_date}&property_code={code}",
+            headers=DETAIL_HEADER,
+        )
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving data: {e}. Skipping...")
+        return ""
 
 
 def create_data_list_for_operator(operator, first_date, last_date):
