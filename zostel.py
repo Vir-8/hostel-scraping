@@ -28,11 +28,17 @@ def get_operators_data():
     response = requests.request("GET", config["zostel_url"], headers=BASE_HEADER)
 
     # Define the folder path
-    data_folder = "data"
+    compiled_data_folder = "compiled_data"
+    raw_data_folder = "raw"
     subfolder_name = "operator_data"
 
-    os.makedirs(os.path.join(data_folder, subfolder_name), exist_ok=True)
-    json_file_path = os.path.join(data_folder, subfolder_name, "operators.json")
+    os.makedirs(os.path.join(compiled_data_folder, subfolder_name), exist_ok=True)
+    json_file_path = os.path.join(
+        compiled_data_folder, subfolder_name, "operators.json"
+    )
+
+    os.makedirs(os.path.join(raw_data_folder, subfolder_name), exist_ok=True)
+    raw_data_file_path = os.path.join(raw_data_folder, subfolder_name, "operators.json")
 
     data = {
         "operators": [
@@ -45,6 +51,9 @@ def get_operators_data():
     with open(json_file_path, "w") as json_file:
         json.dump(data, json_file, indent=4)
 
+    with open(raw_data_file_path, "w") as json_file:
+        json.dump(response.json(), json_file, indent=4)
+
 
 def get_all_room_details(operators):
     # Get the check-in and check-out dates for relevant API calls
@@ -56,17 +65,26 @@ def get_all_room_details(operators):
     last_date = later.strftime("%Y-%m-%d")
 
     # Define the data folder path
-    data_folder = "data"
+    data_folder = "compiled_data"
+    raw_data_folder = "raw"
 
     room_data_folder = "room_data"
     availability_data_folder = "availability_data"
+
+    global timestamp
+    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # Create the subfolder and parent directories if they don't exist
     os.makedirs(os.path.join(data_folder, room_data_folder), exist_ok=True)
     os.makedirs(os.path.join(data_folder, availability_data_folder), exist_ok=True)
 
-    global timestamp
-    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    os.makedirs(
+        os.path.join(raw_data_folder, room_data_folder, timestamp), exist_ok=True
+    )
+    os.makedirs(
+        os.path.join(raw_data_folder, availability_data_folder, timestamp),
+        exist_ok=True,
+    )
 
     room_file_path = os.path.join(data_folder, room_data_folder, "room_data.json")
     availability_file_path = os.path.join(
@@ -83,10 +101,11 @@ def get_all_room_details(operators):
 
         for operator in operators:
             code = operator["slug"].rsplit("-", 1)[-1].upper()
+            name = operator["name"]
 
-            room_future = executor.submit(get_room_data, operator["slug"])
+            room_future = executor.submit(get_room_data, operator["slug"], name)
             availability_future = executor.submit(
-                get_availability_data, code, first_date, last_date
+                get_availability_data, code, first_date, last_date, name
             )
 
             futures.append((operator, room_future, availability_future))
@@ -117,28 +136,38 @@ def get_all_room_details(operators):
 @retry(
     requests.exceptions.RequestException, tries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS
 )
-def get_room_data(slug):
+def get_room_data(slug, name):
     # Request room data such as the room names and room IDs
     response = requests.request(
         "GET", f"{config['zostel_room_url']}{slug}/", headers=BASE_HEADER
     )
 
+    room_file_path = os.path.join("raw", "room_data", f"{timestamp}", f"{name}.json")
+
     room_data = [
         {"id": room["id"], "room_name": room["name"]}
         for room in response.json()["operator"]["rooms"]
     ]
+
+    with open(room_file_path, "w") as json_file:
+        json.dump(response.json(), json_file, indent=4)
+
     return room_data
 
 
 @retry(
     requests.exceptions.RequestException, tries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS
 )
-def get_availability_data(code, first_date, last_date):
+def get_availability_data(code, first_date, last_date, name):
     # Request availability data such as units and pricing
     response = requests.request(
         "GET",
         f"{config['availability_info_url']}?checkin={first_date}&checkout={last_date}&property_code={code}",
         headers=DETAIL_HEADER,
+    )
+
+    availability_file_path = os.path.join(
+        "raw", "availability_data", f"{timestamp}", f"{name}.json"
     )
 
     availability = response.json()["availability"]
@@ -168,6 +197,9 @@ def get_availability_data(code, first_date, last_date):
                 }
             ]
 
+    with open(availability_file_path, "w") as json_file:
+        json.dump(response.json(), json_file, indent=4)
+
     return availability_data
 
 
@@ -182,14 +214,14 @@ def create_data_list_for_operator():
     data_list = []
 
     # Get all places
-    with open("data/operator_data/operators.json", "r") as json_file:
+    with open("compiled_data/operator_data/operators.json", "r") as json_file:
         operators = json.load(json_file)["operators"]
 
     for operator in operators:
         place = operator["name"]
 
         # Get all rooms of the place
-        with open("data/room_data/room_data.json", "r") as json_file:
+        with open("compiled_data/room_data/room_data.json", "r") as json_file:
             rooms = json.load(json_file)[f"{place}"]
 
         for room in rooms:
@@ -197,7 +229,9 @@ def create_data_list_for_operator():
             id = room["id"]
 
             # Get availability data for the specific room of the specific place
-            with open(f"data/availability_data/{timestamp}.json", "r") as json_file:
+            with open(
+                f"compiled_data/availability_data/{timestamp}.json", "r"
+            ) as json_file:
                 availability_data = json.load(json_file)[f"{place}"][f"{id}"]
 
             for entry in availability_data:
@@ -217,7 +251,7 @@ def main():
     # Get the destination details and relevant API data
     get_operators_data()
 
-    with open("data/operator_data/operators.json", "r") as json_file:
+    with open("compiled_data/operator_data/operators.json", "r") as json_file:
         operators = json.load(json_file)["operators"]
 
     get_all_room_details(operators)
